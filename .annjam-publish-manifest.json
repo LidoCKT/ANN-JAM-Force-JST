@@ -1,0 +1,21 @@
+[
+  ".gitignore",
+  "PUBLISH.md",
+  "README.md",
+  "RELEASE_NOTES.md",
+  "VALIDATION.md",
+  "app/src/main/AndroidManifest.xml",
+  "app/src/main/assets/xposed_init",
+  "app/src/main/java/io/github/annjam/timezone/MainActivity.java",
+  "app/src/main/java/io/github/annjam/timezone/TimezoneModule.java",
+  "app/src/main/java/io/github/annjam/timezone/TimezonePolicy.java",
+  "app/src/main/res/drawable/ic_launcher.xml",
+  "app/src/main/res/values/strings.xml",
+  "build.ps1",
+  "publish.ps1",
+  "tests/AndroidManifest.xml",
+  "tests/java/io/github/annjam/timezone/SelfTestInstrumentation.java",
+  "tests/test_publish.py",
+  "tools/build.py",
+  "tools/publish.py"
+]

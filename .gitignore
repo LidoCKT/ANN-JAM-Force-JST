@@ -1,0 +1,10 @@
+/build/
+/tools/deps/
+/signing/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.apk
+*.xapk
+__pycache__/

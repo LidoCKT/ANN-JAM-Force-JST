@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ANN JAM 日本时区</string>
+    <string name="module_description">仅让 ANN JAM 使用 Asia/Tokyo，修正 UTC+8 下节目入口延迟开放的问题。包含 Flutter 原生时区路径。</string>
+    <string-array name="xposed_scope">
+        <item>jp.annjam</item>
+    </string-array>
+</resources>
