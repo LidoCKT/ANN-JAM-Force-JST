@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("annjam_publish", ROOT / "tools/publish.py")
@@ -105,6 +107,56 @@ class PublisherTests(unittest.TestCase):
                      "app/cache.p12", ".git/config", "build/app.apk"]:
             self.assertFalse(publisher.is_source_path(path), path)
         self.assertTrue(publisher.is_source_path("tools/publish.py"))
+
+    def test_failed_push_resumes_existing_commit(self):
+        failure = subprocess.CalledProcessError(1, ["git", "push"])
+        with patch.object(publisher, "push_with_retry", side_effect=failure):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self.publish()
+        state_path = self.source / "build/last-publish.json"
+        failed = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertTrue(failed["pending"])
+        result = publisher.resume(self.source, "latest", str(self.remote))
+        self.assertEqual(result["commit"], failed["commit"])
+        self.assertFalse(result["pending"])
+        self.assertEqual(git(self.remote, "rev-list", "--count", "main"), "1")
+
+
+class RetryTests(unittest.TestCase):
+    @staticmethod
+    def response(code, error=""):
+        return subprocess.CompletedProcess(["git", "push"], code, "", error)
+
+    def test_transient_error_retries_same_push(self):
+        with patch.object(publisher, "git", side_effect=[
+                self.response(1, "remote: fatal error in commit_refs_rules"),
+                self.response(0, "Everything up-to-date\n")]) as command:
+            with patch.object(publisher.time, "sleep") as sleep:
+                publisher.push_with_retry(Path("."), "main")
+        self.assertEqual(command.call_count, 2)
+        self.assertEqual(command.call_args_list[0], command.call_args_list[1])
+        sleep.assert_called_once_with(5)
+
+    def test_retries_are_bounded(self):
+        with patch.object(publisher, "git",
+                          return_value=self.response(1, "Internal Server Error")) as command:
+            with patch.object(publisher.time, "sleep") as sleep:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    publisher.push_with_retry(Path("."), "main")
+        self.assertEqual(command.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 15])
+
+    def test_permission_or_history_rejection_is_not_retried(self):
+        for error in ["GH013: protected branch",
+                      "non-fast-forward", "Authentication failed"]:
+            with self.subTest(error=error):
+                with patch.object(publisher, "git",
+                                  return_value=self.response(1, error)) as command:
+                    with patch.object(publisher.time, "sleep") as sleep:
+                        with self.assertRaises(subprocess.CalledProcessError):
+                            publisher.push_with_retry(Path("."), "main")
+                self.assertEqual(command.call_count, 1)
+                sleep.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ param(
     [string]$Message = 'Update ANN JAM Force JST',
     [string]$AuthorName,
     [string]$AuthorEmail,
+    [string]$Resume,
     [switch]$Preview
 )
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,7 @@ $taskPublishArgs = @(
 )
 if ($AuthorName) { $taskPublishArgs += @('--author-name', $AuthorName) }
 if ($AuthorEmail) { $taskPublishArgs += @('--author-email', $AuthorEmail) }
+if ($Resume) { $taskPublishArgs += @('--resume', $Resume) }
 if ($Preview) { $taskPublishArgs += '--preview' }
 & python @taskPublishArgs
 if ($LASTEXITCODE -ne 0) { throw "Publish failed: $LASTEXITCODE" }

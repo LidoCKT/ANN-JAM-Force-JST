@@ -24,6 +24,22 @@ git credential-manager github login --username LidoCKT --browser
 
 脚本每次在 `build/github-publish-*` 中克隆远程默认分支，再同步源码、提交和正常推送。远程仓库为空时使用 `main`。仓库已有历史会保留，脚本不会强制推送。远程若有分支保护、权限不足或并发更新，Git 会报告错误，克隆目录会保留。
 
+遇到 GitHub 的 `Internal Server Error` 或 `commit_refs_rules` 内部错误时，脚本会等待 5 秒和 15 秒，最多尝试推送三次。每次都推送同一个提交。权限错误、分支保护和历史冲突不会自动重试。
+
+若仍失败，稍后继续推送保留的提交：
+
+```powershell
+.\publish.ps1 -Resume latest
+```
+
+也可以指定之前输出的克隆目录，例如：
+
+```powershell
+.\publish.ps1 -Resume 'build\github-publish-oha2wsp7'
+```
+
+恢复模式只推送该克隆中已存在的提交，不会同步当前源码或创建新提交。失败信息和最后一次推送状态保存在本机的 `build/last-publish.json`。
+
 签名私钥、APK、XAPK 和构建缓存不进入源码提交。APK 继续通过下面的 Release 流程上传，这个脚本只提交源码。
 
 提交身份优先使用当前 Git 配置；没有配置时默认使用 `LidoCKT` 和 `LidoCKT@users.noreply.github.com`。可通过 `-AuthorName`、`-AuthorEmail` 覆盖；只写入本次克隆的配置，不修改全局设置。

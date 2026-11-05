@@ -6,7 +6,9 @@ import json
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = "https://github.com/LidoCKT/ANN-JAM-Force-JST.git"
@@ -67,6 +69,77 @@ def checked_path(checkout: Path, relative: str) -> Path:
             raise RuntimeError(f"Refusing checkout symlink: {relative}")
         probe = probe.parent
     return path
+
+
+def push_with_retry(checkout: Path, branch: str) -> None:
+    """Retry only known server-side failures, always using a normal push."""
+    for attempt in range(3):
+        result = git(checkout, "push", "--set-upstream", "origin",
+                     f"HEAD:refs/heads/{branch}", capture=True, check=False)
+        output = (result.stdout or "") + (result.stderr or "")
+        print(output, end="" if output.endswith("\n") else "\n", flush=True)
+        if result.returncode == 0:
+            return
+        lowered = output.lower()
+        permanent = any(marker in lowered for marker in (
+            "gh006", "gh013", "non-fast-forward", "permission denied",
+            "authentication failed", "protected branch", "error: 403",
+        ))
+        transient = any(marker in lowered for marker in (
+            "internal server error", "commit_refs_rules",
+            "error: 500", "error: 502", "error: 503", "error: 504",
+            "bad gateway", "service unavailable", "gateway timeout",
+        ))
+        if permanent or not transient or attempt == 2:
+            raise subprocess.CalledProcessError(
+                result.returncode, result.args, output=result.stdout,
+                stderr=result.stderr)
+        delay = (5, 15)[attempt]
+        print(f"GitHub server error; retrying the same commit in {delay}s "
+              f"({attempt + 2}/3).", flush=True)
+        time.sleep(delay)
+
+
+def finish_push(root: Path, checkout: Path, branch: str, repository: str) -> dict:
+    commit = git(checkout, "rev-parse", "HEAD", capture=True).stdout.strip()
+    result = {"changed": True, "checkout": str(checkout), "repository": repository,
+              "branch": branch, "commit": commit, "pending": True}
+    state = root / "build/last-publish.json"
+    state.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                     encoding="utf-8")
+    try:
+        push_with_retry(checkout, branch)
+    except Exception:
+        relative = checkout.relative_to(root)
+        print(f'Commit retained. Retry with: .\\publish.ps1 -Resume "{relative}"',
+              flush=True)
+        raise
+    result["pending"] = False
+    state.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                     encoding="utf-8")
+    print(f"Published {commit} to {branch}", flush=True)
+    return result
+
+
+def resume(root: Path, value: str, repository: str = REPOSITORY) -> dict:
+    root = root.resolve()
+    if value == "latest":
+        state = json.loads((root / "build/last-publish.json").read_text(encoding="utf-8"))
+        value = state["checkout"]
+    candidate = Path(value)
+    checkout = (candidate if candidate.is_absolute() else root / candidate).resolve()
+    if (checkout.parent != (root / "build").resolve()
+            or not checkout.name.startswith("github-publish-")
+            or not (checkout / ".git").is_dir()):
+        raise RuntimeError("Resume path must be a retained build/github-publish-* clone.")
+    origin = git(checkout, "remote", "get-url", "origin", capture=True).stdout.strip()
+    if origin != repository:
+        raise RuntimeError("Retained clone points to a different repository.")
+    if git(checkout, "status", "--porcelain", capture=True).stdout.strip():
+        raise RuntimeError("Retained clone has uncommitted changes; inspect it first.")
+    branch = git(checkout, "symbolic-ref", "--short", "HEAD",
+                 capture=True).stdout.strip()
+    return finish_push(root, checkout, branch, repository)
 
 
 def publish(root: Path, repository: str, message: str, preview: bool = False,
@@ -133,6 +206,7 @@ def publish(root: Path, repository: str, message: str, preview: bool = False,
             configured = git(checkout, "config", "--get", key,
                              capture=True, check=False).stdout.strip()
             git(checkout, "config", key, explicit or configured or fallback)
+        git(checkout, "config", "core.autocrlf", "false")
 
         managed = sorted(set(previous) | set(files) | {MANIFEST})
         git(checkout, "add", "-A", "--", *managed)
@@ -144,16 +218,7 @@ def publish(root: Path, repository: str, message: str, preview: bool = False,
             raise RuntimeError("Could not inspect staged changes.")
         git(checkout, "diff", "--cached", "--stat")
         git(checkout, "commit", "-m", message)
-        # Normal fast-forward push: concurrent remote updates are never forced.
-        git(checkout, "push", "--set-upstream", "origin",
-            f"HEAD:refs/heads/{branch}")
-        commit = git(checkout, "rev-parse", "HEAD", capture=True).stdout.strip()
-        result = {"changed": True, "checkout": str(checkout),
-                  "branch": branch, "commit": commit}
-        (build / "last-publish.json").write_text(
-            json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print(f"Published {commit} to {branch}", flush=True)
-        return result
+        return finish_push(root, checkout, branch, repository)
     except Exception:
         print(f"Publishing stopped. Checkout retained at: {checkout}", flush=True)
         raise
@@ -166,9 +231,20 @@ def main() -> None:
                         help="List source files only; no network or Git writes.")
     parser.add_argument("--author-name")
     parser.add_argument("--author-email")
+    parser.add_argument("--resume", metavar="CHECKOUT",
+                        help="Push an existing clone, or use 'latest'; no new commit.")
     options = parser.parse_args()
-    publish(ROOT, REPOSITORY, options.message, options.preview,
-            options.author_name, options.author_email)
+    if options.resume and options.preview:
+        parser.error("--resume and --preview cannot be combined")
+    try:
+        if options.resume:
+            resume(ROOT, options.resume)
+        else:
+            publish(ROOT, REPOSITORY, options.message, options.preview,
+                    options.author_name, options.author_email)
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        print(f"Publish failed: {error}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
