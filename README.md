@@ -69,26 +69,3 @@ f48c635f1c7469fdec0e00ad2ea0b7a6b2f5b55065784a35b7ca3a84615e8e25
 当前 APK 使用首次构建时生成的自签名证书。维护者请保存本地的 `signing/local-test.p12`，后续构建使用同一签名，以便用户覆盖安装更新。源码包不包含该私钥，新克隆的项目首次构建会生成独立签名。签名目录已加入 `.gitignore`。
 
 构建过程自动检查 APK 签名、zip 对齐、DEX 和 Xposed 入口，并输出 SHA256 文件。
-
-## 已完成的验证
-
-2026-11-05，在 Android API 36.1 x86_64 模拟器中：
-
-- 模块 APK 安装成功，说明页面冷启动成功。
-- 14 项机制自测通过，包括包名隔离、Java / ICU / ZoneId 默认时区、可变时区对象隔离、重复设置、跨午夜日期，以及真实时钟保持不变。
-- 用进程实际 `TZ` 值启动的原生 `date` 子进程，将 `2026-11-05T15:30:00Z` 转为 `2026-11-06T00:30:00 +0900`。
-- APK v2 / v3 签名和 zip 对齐检查通过。
-
-自测调用正式代码中的 `TimezonePolicy`，没有使用 LSPosed。原生测试是子进程检查，不能替代目标应用中的运行测试。模拟器以只读、无快照保存模式运行。
-
-另外，用户已反馈插件在真机上运行正常；该反馈没有附带逐项日志或设备环境信息。
-
-复现机制自测：
-
-```powershell
-python .\tools\build.py --offline --selftest
-adb -s YOUR_TEST_DEVICE install -r .\build\ANNJAM-Timezone-selftest.apk
-adb -s YOUR_TEST_DEVICE shell am instrument -w io.github.annjam.timezone.selftest/io.github.annjam.timezone.SelfTestInstrumentation
-```
-
-`ANNJAM-Timezone-selftest.apk` 是开发验证工具，日常只需安装正式模块 APK。
