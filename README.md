@@ -25,16 +25,6 @@ ANNJAM-TZ Application.attach process=jp.annjam java=Asia/Tokyo offsetMillis=3240
 
 恢复原状：停用模块，强制停止 ANN JAM 并重新打开。模块没有配置数据，无需清除 ANN JAM 数据。
 
-## 维护者提交源码
-
-首次在终端登录 GitHub：
-
-```powershell
-git credential-manager github login --username LidoCKT --browser
-```
-
-之后在项目目录运行 `.\publish.ps1`，即可自动同步源码、提交并推送到本项目仓库。`.\publish.ps1 -Preview` 可离线预览文件清单。详细行为和网页发布 APK 的步骤见 [PUBLISH.md](PUBLISH.md)。
-
 ## 实现
 
 - 使用传统 Xposed API 82，面向支持该 API 的 LSPosed；最低 Android 8.0（API 26）。

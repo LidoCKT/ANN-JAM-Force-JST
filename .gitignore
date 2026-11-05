@@ -8,3 +8,9 @@
 *.apk
 *.xapk
 __pycache__/
+/.local/
+/publish.ps1
+/PUBLISH.md
+/tools/publish.py
+/tests/test_publish.py
+/.annjam-publish-manifest.json
